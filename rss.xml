@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0">
+	<channel>
+		<title>Shaqeel rss feed</title>
+	<link>"https://ShaqeelAhmad.github.io"</link>
+		<description>My updates?</description>
+		<language>en</language>
+<item>
+<title>how-I-cross-compiled-C-without-Zig.md</title>
+<link>https://ShaqeelAhmad.github.io/blog/2025/02/02/how-I-cross-compiled-C-without-Zig.md</link>
+<pubDate>Sun, 02 Feb 2025 00:00:00 +0800 </pubDate>
+<description><p>&lt;h1&gt;How I cross compiled C without Zig&lt;/h1&gt;
+&lt;p&gt;Zig is a modern language known for it's great C interoperability amongst other
+features. One of the main reasons it can do this is because of
+&lt;a href=&quot;https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html&quot;&gt;&lt;code&gt;zig cc&lt;/code&gt;&lt;/a&gt;,
+a clang frontend that comes with Zig. It is able to cross compile C code even
+though you wouldn't normally be able to do it with just clang or gcc.&lt;/p&gt;
+&lt;p&gt;Anyone who tried to cross compile C likely just installed the packages for
+cross compiling in their distro. While that method works, it's not really fun
+and if your distro doesn't provide the necessary packages you're on your own.
+So I wanted to explore how you could cross compile from scratch.&lt;/p&gt;
+&lt;p&gt;Note that I'm doing everything on x86-64 Linux and it likely won't work on other
+systems.&lt;/p&gt;
+&lt;h2&gt;A basic hello world program&lt;/h2&gt;
+&lt;pre&gt;&lt;code&gt;// main.c
+#include &amp;lt;stdio.h&amp;gt;</p>
+<p>int
+main(void)
+{
+<pre><code>printf(&amp;quot;Hello World!\n&amp;quot;);
+</code></pre>
+<p>}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Compiling this code natively is pretty easy.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ clang -o main main.c
+$ ./main
+Hello World!
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Cross compiling also seems easy, clang provides a &lt;code&gt;-target&lt;/code&gt; flag to specify a
+target architecture. This is also the reason why I used clang instead of gcc.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ clang -target arm64 -o main main.c
+/usr/bin/ld: /tmp/main-5bfac4.o: Relocations in generic ELF (EM: 183)
+/usr/bin/ld: /tmp/main-5bfac4.o: Relocations in generic ELF (EM: 183)
+/usr/bin/ld: /tmp/main-5bfac4.o: error adding symbols: file in wrong format
+collect2: error: ld returned 1 exit status
+clang: error: linker (via gcc) command failed with exit code 1 (use -v to see invocation)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Unfortunately, this fails. And it fails specifically at the linking stage. We
+could prove that by generating the object file and linking separately. Lets
+also use &lt;code&gt;lld&lt;/code&gt; the llvm linker instead of GNU &lt;code&gt;ld&lt;/code&gt;.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ clang -target arm64 -c -o main.o main.c
+$ file main.o
+main.o: ELF 64-bit LSB relocatable, ARM aarch64, version 1 (SYSV), not stripped
+$ clang -fuse-ld=lld -target arm64 -o main main.o
+ld.lld: error: main.o is incompatible with elf64-x86-64
+collect2: error: ld returned 1 exit status
+clang: error: linker (via gcc) command failed with exit code 1 (use -v to see invocation)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We did generate arm64 object file but lld still tries to link it as x86-64
+object file. Now you could go into the rabbit hole of why it doesn't work by
+passing &lt;code&gt;-v&lt;/code&gt; to the linker and so on but I'll spoil the answer here.&lt;/p&gt;
+&lt;p&gt;We can't link because we need a libc compiled for arm64, but the system only
+has an x86-64 libc. Directly using &lt;code&gt;lld&lt;/code&gt; also isn't possible because of this.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ ld.lld -o main main.o
+ld.lld: error: undefined symbol: printf
+&amp;gt;&amp;gt;&amp;gt; referenced by main.c
+&amp;gt;&amp;gt;&amp;gt;               main.o:(main)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note that if you were to not use the libc or any of the &lt;a href=&quot;https://en.wikipedia.org/wiki/Crt0&quot;&gt;startup
+routines&lt;/a&gt;, then it is possible to cross
+compile it by just telling clang to not link with those files.&lt;/p&gt;
+&lt;h2&gt;Cross compiling musl libc&lt;/h2&gt;
+&lt;p&gt;Honestly, there's not much to say here. You just make musl with llvm programs
+instead of GNU ones and tell it to cross compile to the target platform. Note
+that I'm installing this to &lt;code&gt;$HOME/opt/arm64-cross&lt;/code&gt; and will refer to that
+directory throughout this article.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ export AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip READELF=llvm-readelf CC='clang -target arm64 -fuse-ld=lld'
+$ ./configure --prefix=&amp;quot;$HOME&amp;quot;/opt/arm64-cross/ --target=aarch64 --disable-shared
+$ make
+$ make install
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Now lets like the program manually.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ ld.lld -o main main.o -L $HOME/opt/arm64-cross/lib/ -lc $HOME/opt/arm64-cross/lib/crt1.o
+ld.lld: error: undefined symbol: <strong>eqtf2
+&amp;gt;&amp;gt;&amp;gt; referenced by frexpl.c
+&amp;gt;&amp;gt;&amp;gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
+&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt<em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
+&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt</em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&lt;/code&gt;&lt;/pre&gt;
+&lt;pre&gt;&lt;code&gt;ld.lld: error: undefined symbol: </strong>extenddftf2
+&amp;gt;&amp;gt;&amp;gt; referenced by frexpl.c
+&amp;gt;&amp;gt;&amp;gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
+&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(pop<em>arg) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
+&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt</em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+......
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;It outputs a lot of errors so I truncated it. It seem to refer to certain
+symbols like &lt;code&gt;<em></em>eqtf2&lt;/code&gt;. A quick google search shows that they're part of
+libgcc.&lt;/p&gt;
+&lt;p&gt;The &lt;a href=&quot;https://gcc.gnu.org/onlinedocs/gccint/Libgcc.html&quot;&gt;libgcc website&lt;/a&gt;
+describes what it is.
+&lt;blockquote cite=&quot;https://gcc.gnu.org/onlinedocs/gccint/Libgcc.html&quot;&gt;
+GCC provides a low-level runtime library, libgcc.a or libgcc_s.so.1 on some
+platforms. GCC generates calls to routines in this library automatically,
+whenever it needs to perform some operation that is too complicated to emit
+inline code for.
+&lt;/blockquote&gt;&lt;/p&gt;
+&lt;p&gt;So the compiler just inserts function calls in certain places and those
+functioons are implemented in libgcc. As far as I understand, it's not possible
+to disable this&lt;/p&gt;
+&lt;p&gt;Clang also has a similar thing called compiler-rt. This means we'll also have
+to cross compile compiler-rt. Honestly, I haven't compiled it properly but I'll
+show how I did it.&lt;/p&gt;
+&lt;h2&gt;Cross compiling compiler-rt&lt;/h2&gt;
+&lt;p&gt;First, I took the compiler-rt source archive from
+&lt;a href=&quot;https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7&quot;&gt;https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7&lt;/a&gt;
+and extracted it.&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ cd compiler-rt-19.1.7.src/lib/builtins
+$ clang -target arm64 -c <em>.c
+$ ar rcs libcompiler-rt.a </em>.o
+$ cp libcompiler-rt.a $HOME/opt/arm64-cross/lib/
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Yes, clang did spit out errors, I just ignored it and went on. I'll also
+mention that tcc has &lt;code&gt;libtcc1.a&lt;/code&gt; which may work as well if you want a less
+hacky solution. Tcc is also capable of cross compiling and linking,
+unfortunately it can't compile musl libc.&lt;/p&gt;
+&lt;p&gt;And finally, the moment everyone was waiting for...&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ ld.lld -o main main.o -L $HOME/opt/arm64-cross/lib/ -lc -lcompiler-rt $HOME/opt/arm64-cross/lib/crt1.o
+$ qemu-aarch64 ./main
+Hello World!
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Compiling programs with more dependencies&lt;/h2&gt;
+&lt;p&gt;Unfortunately, following this process means you'll have to cross-compile every
+library that a program depends on. On languages like Go, this is what happens.
+Those languages have dependency managers that allow them to compile every
+single dependency to the target architecture.&lt;/p&gt;
+&lt;p&gt;This is also the case with &lt;code&gt;zig cc&lt;/code&gt;. It can't compile programs with extra
+dependencies.&lt;/p&gt;
+&lt;h2&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;We can replicate the functionality of &lt;code&gt;zig cc&lt;/code&gt;, but it must be done in 2 steps.
+&lt;code&gt;zig cc&lt;/code&gt; is capable of automatically linking to the right architecture and I
+haven't had any success replicating it with clang in 1 command. So it's not
+possible to use it in the &lt;code&gt;CC&lt;/code&gt; environment variable like with &lt;code&gt;zig cc&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;It is possible to write a wrapper around clang and lld that does that, but
+that's what &lt;code&gt;zig cc&lt;/code&gt; is alreaady doing. I guess it can be nice if you didn't
+need another language, to cross compile C.&lt;/p&gt;
+&lt;h2&gt;Bonus: tcc&lt;/h2&gt;
+&lt;p&gt;Building tcc:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ ./configure --prefix=&amp;quot;$HOME&amp;quot;/opt/arm64-cross/ --enable-cross --enable-static
+$ make
+$ make install
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;And building the hello world program:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;$ $HOME/opt/arm64-cross/bin/arm64-tcc -static -nostdlib -I $HOME/opt/arm64-cross/include -L $HOME/opt/arm64-cross/lib/ -o main main.c -lc $HOME/opt/arm64-cross/lib/crt1.o $HOME/opt/arm64-cross/lib/tcc/arm64-libtcc1.a -lc
+$ qemu-aarch64 ./main
+Hello World!
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Interestingly, tcc can do it in 1 command. But for some reason it needs &lt;code&gt;-lc&lt;/code&gt;
+twice and also it needs to use the arm64 musl headers. While clang seemingly
+just worked while using the x86-64 headers. I'm guessing I just got lucky with
+clang.&lt;/p&gt;</p>
+</p>
+</description>
+</item>
+	</channel>
+</rss>

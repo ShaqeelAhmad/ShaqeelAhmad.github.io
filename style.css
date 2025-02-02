@@ -1,0 +1,48 @@
+footer {
+	padding-top: 1rem;
+	padding-bottom: 2rem;
+	text-align: center;
+}
+
+footer, p {
+	vertical-align: middle;
+}
+
+body {
+	margin-left: 15%;
+	margin-right: 15%;
+	font-size: 1rem;
+}
+
+pre, code {
+	background-color: #ededed;
+	font-size: 1rem;
+
+	margin: 0.2rem;
+	padding: 0.2rem;
+	line-height: 1.2rem;
+}
+
+@media (prefers-color-scheme: dark) {
+	body {
+		background: #121212;
+		color: #fefefe;
+	}
+
+	pre, code {
+		background-color: #232323;
+	}
+
+	a {
+		color: #1bf;
+	}
+
+	a:visited {
+		color: #1af;
+	}
+
+	html a:hover {
+		color: #2ef;
+		text-decoration: none;
+	}
+}

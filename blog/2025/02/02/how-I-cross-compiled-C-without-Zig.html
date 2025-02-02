@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Shaqeel</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="stylesheet" type="text/css" href="/style.css">
+		<link rel="alternate" type="application/rss+xml" title="rss" href="/rss.xml">
+	</head>
+
+	<body>
+<h1>How I cross compiled C without Zig</h1>
+<p>Zig is a modern language known for it's great C interoperability amongst other
+features. One of the main reasons it can do this is because of
+<a href="https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html"><code>zig cc</code></a>,
+a clang frontend that comes with Zig. It is able to cross compile C code even
+though you wouldn't normally be able to do it with just clang or gcc.</p>
+<p>Anyone who tried to cross compile C likely just installed the packages for
+cross compiling in their distro. While that method works, it's not really fun
+and if your distro doesn't provide the necessary packages you're on your own.
+So I wanted to explore how you could cross compile from scratch.</p>
+<p>Note that I'm doing everything on x86-64 Linux and it likely won't work on other
+systems.</p>
+<h2>A basic hello world program</h2>
+<pre><code>// main.c
+#include &lt;stdio.h&gt;
+
+int
+main(void)
+{
+	printf(&quot;Hello World!\n&quot;);
+}
+</code></pre>
+<p>Compiling this code natively is pretty easy.</p>
+<pre><code>$ clang -o main main.c
+$ ./main
+Hello World!
+</code></pre>
+<p>Cross compiling also seems easy, clang provides a <code>-target</code> flag to specify a
+target architecture. This is also the reason why I used clang instead of gcc.</p>
+<pre><code>$ clang -target arm64 -o main main.c
+/usr/bin/ld: /tmp/main-5bfac4.o: Relocations in generic ELF (EM: 183)
+/usr/bin/ld: /tmp/main-5bfac4.o: Relocations in generic ELF (EM: 183)
+/usr/bin/ld: /tmp/main-5bfac4.o: error adding symbols: file in wrong format
+collect2: error: ld returned 1 exit status
+clang: error: linker (via gcc) command failed with exit code 1 (use -v to see invocation)
+</code></pre>
+<p>Unfortunately, this fails. And it fails specifically at the linking stage. We
+could prove that by generating the object file and linking separately. Lets
+also use <code>lld</code> the llvm linker instead of GNU <code>ld</code>.</p>
+<pre><code>$ clang -target arm64 -c -o main.o main.c
+$ file main.o
+main.o: ELF 64-bit LSB relocatable, ARM aarch64, version 1 (SYSV), not stripped
+$ clang -fuse-ld=lld -target arm64 -o main main.o
+ld.lld: error: main.o is incompatible with elf64-x86-64
+collect2: error: ld returned 1 exit status
+clang: error: linker (via gcc) command failed with exit code 1 (use -v to see invocation)
+</code></pre>
+<p>We did generate arm64 object file but lld still tries to link it as x86-64
+object file. Now you could go into the rabbit hole of why it doesn't work by
+passing <code>-v</code> to the linker and so on but I'll spoil the answer here.</p>
+<p>We can't link because we need a libc compiled for arm64, but the system only
+has an x86-64 libc. Directly using <code>lld</code> also isn't possible because of this.</p>
+<pre><code>$ ld.lld -o main main.o
+ld.lld: error: undefined symbol: printf
+&gt;&gt;&gt; referenced by main.c
+&gt;&gt;&gt;               main.o:(main)
+</code></pre>
+<p>Note that if you were to not use the libc or any of the <a href="https://en.wikipedia.org/wiki/Crt0">startup
+routines</a>, then it is possible to cross
+compile it by just telling clang to not link with those files.</p>
+<h2>Cross compiling musl libc</h2>
+<p>Honestly, there's not much to say here. You just make musl with llvm programs
+instead of GNU ones and tell it to cross compile to the target platform. Note
+that I'm installing this to <code>$HOME/opt/arm64-cross</code> and will refer to that
+directory throughout this article.</p>
+<pre><code>$ export AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip READELF=llvm-readelf CC='clang -target arm64 -fuse-ld=lld'
+$ ./configure --prefix=&quot;$HOME&quot;/opt/arm64-cross/ --target=aarch64 --disable-shared
+$ make
+$ make install
+</code></pre>
+<p>Now lets like the program manually.</p>
+<pre><code>$ ld.lld -o main main.o -L $HOME/opt/arm64-cross/lib/ -lc $HOME/opt/arm64-cross/lib/crt1.o
+ld.lld: error: undefined symbol: __eqtf2
+&gt;&gt;&gt; referenced by frexpl.c
+&gt;&gt;&gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&gt;&gt;&gt; referenced by vfprintf.c
+&gt;&gt;&gt;               vfprintf.o:(fmt_fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&gt;&gt;&gt; referenced by vfprintf.c
+&gt;&gt;&gt;               vfprintf.o:(fmt_fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+</code></pre>
+<pre><code>ld.lld: error: undefined symbol: __extenddftf2
+&gt;&gt;&gt; referenced by frexpl.c
+&gt;&gt;&gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&gt;&gt;&gt; referenced by vfprintf.c
+&gt;&gt;&gt;               vfprintf.o:(pop_arg) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+&gt;&gt;&gt; referenced by vfprintf.c
+&gt;&gt;&gt;               vfprintf.o:(fmt_fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
+......
+</code></pre>
+<p>It outputs a lot of errors so I truncated it. It seem to refer to certain
+symbols like <code>__eqtf2</code>. A quick google search shows that they're part of
+libgcc.</p>
+<p>The <a href="https://gcc.gnu.org/onlinedocs/gccint/Libgcc.html">libgcc website</a>
+describes what it is.
+<blockquote cite="https://gcc.gnu.org/onlinedocs/gccint/Libgcc.html">
+GCC provides a low-level runtime library, libgcc.a or libgcc\_s.so.1 on some
+platforms. GCC generates calls to routines in this library automatically,
+whenever it needs to perform some operation that is too complicated to emit
+inline code for.
+</blockquote></p>
+<p>So the compiler just inserts function calls in certain places and those
+functioons are implemented in libgcc. As far as I understand, it's not possible
+to disable this</p>
+<p>Clang also has a similar thing called compiler-rt. This means we'll also have
+to cross compile compiler-rt. Honestly, I haven't compiled it properly but I'll
+show how I did it.</p>
+<h2>Cross compiling compiler-rt</h2>
+<p>First, I took the compiler-rt source archive from
+<a href="https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7">https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7</a>
+and extracted it.</p>
+<pre><code>$ cd compiler-rt-19.1.7.src/lib/builtins
+$ clang -target arm64 -c *.c
+$ ar rcs libcompiler-rt.a *.o
+$ cp libcompiler-rt.a $HOME/opt/arm64-cross/lib/
+</code></pre>
+<p>Yes, clang did spit out errors, I just ignored it and went on. I'll also
+mention that tcc has <code>libtcc1.a</code> which may work as well if you want a less
+hacky solution. Tcc is also capable of cross compiling and linking,
+unfortunately it can't compile musl libc.</p>
+<p>And finally, the moment everyone was waiting for...</p>
+<pre><code>$ ld.lld -o main main.o -L $HOME/opt/arm64-cross/lib/ -lc -lcompiler-rt $HOME/opt/arm64-cross/lib/crt1.o
+$ qemu-aarch64 ./main
+Hello World!
+</code></pre>
+<h2>Compiling programs with more dependencies</h2>
+<p>Unfortunately, following this process means you'll have to cross-compile every
+library that a program depends on. On languages like Go, this is what happens.
+Those languages have dependency managers that allow them to compile every
+single dependency to the target architecture.</p>
+<p>This is also the case with <code>zig cc</code>. It can't compile programs with extra
+dependencies.</p>
+<h2>Conclusion</h2>
+<p>We can replicate the functionality of <code>zig cc</code>, but it must be done in 2 steps.
+<code>zig cc</code> is capable of automatically linking to the right architecture and I
+haven't had any success replicating it with clang in 1 command. So it's not
+possible to use it in the <code>CC</code> environment variable like with <code>zig cc</code>.</p>
+<p>It is possible to write a wrapper around clang and lld that does that, but
+that's what <code>zig cc</code> is alreaady doing. I guess it can be nice if you didn't
+need another language, to cross compile C.</p>
+<h2>Bonus: tcc</h2>
+<p>Building tcc:</p>
+<pre><code>$ ./configure --prefix=&quot;$HOME&quot;/opt/arm64-cross/ --enable-cross --enable-static
+$ make
+$ make install
+</code></pre>
+<p>And building the hello world program:</p>
+<pre><code>$ $HOME/opt/arm64-cross/bin/arm64-tcc -static -nostdlib -I $HOME/opt/arm64-cross/include -L $HOME/opt/arm64-cross/lib/ -o main main.c -lc $HOME/opt/arm64-cross/lib/crt1.o $HOME/opt/arm64-cross/lib/tcc/arm64-libtcc1.a -lc
+$ qemu-aarch64 ./main
+Hello World!
+</code></pre>
+<p>Interestingly, tcc can do it in 1 command. But for some reason it needs <code>-lc</code>
+twice and also it needs to use the arm64 musl headers. While clang seemingly
+just worked while using the x86-64 headers. I'm guessing I just got lucky with
+clang.</p>
+	<footer>
+		<a class="footer-links" href="/index.html">Home</a>
+		<a class="footer-links" href="/rss.xml">Rss</a>
+	</footer>
+	</body>
+</html>
