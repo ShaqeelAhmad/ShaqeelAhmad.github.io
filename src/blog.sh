@@ -48,26 +48,29 @@ build_files() {
 	<channel>
 		<title>Shaqeel rss feed</title>
 	<link>"$Url"</link>
-		<description>My updates?</description>
+		<description>My blog</description>
 		<language>en</language>
 EOF
 	IndexFile=""$DEST_DIR"/"$BLOG_DIR"/index.html"
 	HTMLHeader="$(cat ./src/header.html)"
 	HTMLFooter="$(cat ./src/footer.html)"
-	echo "$HTMLHeader" > "$IndexFile"
+	echo "$HTMLHeader" | sed 's/TITLE/blog/' > "$IndexFile"
 	printf "<ul>" >> "$IndexFile"
 
 	for File in $(find "$BLOG_DIR" -type f -iname '*.md')
 	do
 		Date=$(dirname ${File#*"$BLOG_DIR"/})
+		Title="$(awk -F '# ' '/^# /{print $2;exit}' "$File")"
+
+		[ -z "$Title" ] && printf "Error: file %s doesn't have a title\nAborting...\n" "$File" && exit 1
 
 		# Blog
 		mkdir -p "$DEST_DIR"/"$(dirname "$File")"
-		(echo "$HTMLHeader" ; smu "$File"; echo "$HTMLFooter") > "$DEST_DIR"/"${File%.md}".html
+		(echo "$HTMLHeader" | sed 's/TITLE/'"$Title"'/' ; smu "$File"; echo "$HTMLFooter") > "$DEST_DIR"/"${File%.md}".html
 
 		# Rss
 		echo '<item>'                                                                        >> "$RssFile"
-		printf '<title>%s</title>\n' "$(basename "$File")"                                   >> "$RssFile"
+		printf '<title>%s</title>\n' "$Title"                                                >> "$RssFile"
 		printf '<link>%s/%s</link>\n' "$Url" "$File"                                         >> "$RssFile"
 		printf '<pubDate>%s %s</pubDate>\n' "$(date -d "$Date" '+%a, %d %b %Y %H:%M:%S %z')" >> "$RssFile"
 		printf '<description>'                                                               >> "$RssFile"
