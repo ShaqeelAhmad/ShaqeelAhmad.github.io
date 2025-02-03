@@ -80,7 +80,7 @@ EOF
 
 		# Index file
 		File="${File%.md}.html"
-		printf "<li>%s: <a href=/%s>%s</a></li>\n" "$Date" "$File" "$(basename "$File")"     >> "$IndexFile"
+		printf "<li>%s: <a href=/%s>%s</a></li>\n" "$Date" "$File" "$Title" >> "$IndexFile"
 	done
 	printf "</ul>"     >> "$IndexFile"
 	echo "$HTMLFooter" >> "$IndexFile"
