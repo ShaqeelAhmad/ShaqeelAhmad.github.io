@@ -91,7 +91,7 @@ Now lets like the program manually.
 	>>>               vfprintf.o:(fmt_fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
 	>>> referenced by vfprintf.c
 	>>>               vfprintf.o:(fmt_fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
-
+	
 	ld.lld: error: undefined symbol: __extenddftf2
 	>>> referenced by frexpl.c
 	>>>               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a

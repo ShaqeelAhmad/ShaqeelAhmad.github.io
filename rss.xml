@@ -81,15 +81,15 @@ $ make install
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;Now lets like the program manually.&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;$ ld.lld -o main main.o -L $HOME/opt/arm64-cross/lib/ -lc $HOME/opt/arm64-cross/lib/crt1.o
-ld.lld: error: undefined symbol: <strong>eqtf2
+ld.lld: error: undefined symbol: <em></em>eqtf2
 &amp;gt;&amp;gt;&amp;gt; referenced by frexpl.c
 &amp;gt;&amp;gt;&amp;gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
 &amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
 &amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt<em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
 &amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
-&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt</em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
-&lt;/code&gt;&lt;/pre&gt;
-&lt;pre&gt;&lt;code&gt;ld.lld: error: undefined symbol: </strong>extenddftf2
+&amp;gt;&amp;gt;&amp;gt;               vfprintf.o:(fmt</em>fp) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a</p>
+</p>
+<p>ld.lld: error: undefined symbol: <strong>extenddftf2
 &amp;gt;&amp;gt;&amp;gt; referenced by frexpl.c
 &amp;gt;&amp;gt;&amp;gt;               frexpl.o:(frexpl) in archive /home/shaqeel/opt/arm64-cross/lib/libc.a
 &amp;gt;&amp;gt;&amp;gt; referenced by vfprintf.c
@@ -99,7 +99,7 @@ ld.lld: error: undefined symbol: <strong>eqtf2
 ......
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;It outputs a lot of errors so I truncated it. It seem to refer to certain
-symbols like &lt;code&gt;<em></em>eqtf2&lt;/code&gt;. A quick google search shows that they're part of
+symbols like &lt;code&gt;</strong>eqtf2&lt;/code&gt;. A quick google search shows that they're part of
 libgcc.&lt;/p&gt;
 &lt;p&gt;The &lt;a href=&quot;https://gcc.gnu.org/onlinedocs/gccint/Libgcc.html&quot;&gt;libgcc website&lt;/a&gt;
 describes what it is.
@@ -163,7 +163,6 @@ Hello World!
 twice and also it needs to use the arm64 musl headers. While clang seemingly
 just worked while using the x86-64 headers. I'm guessing I just got lucky with
 clang.&lt;/p&gt;</p>
-</p>
 </description>
 </item>
 	</channel>
